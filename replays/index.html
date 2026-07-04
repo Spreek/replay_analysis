@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Replays — replay_analysis</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;line-height:1.5;padding:20px;max-width:900px;margin:auto}
+    h1{margin-top:6px}
+    .row{display:flex;gap:8px;align-items:center;margin:8px 0}
+    input[type=text], input[type=password]{padding:6px;border:1px solid #ccc;border-radius:6px;width:260px}
+    button{padding:8px 12px;border-radius:6px;border:1px solid #0b5cff;background:#0b66ff;color:white;cursor:pointer}
+    .list a{display:block;margin:8px 0}
+    small{color:#666}
+    .notice{background:#f4f8ff;border:1px solid #d0e2ff;padding:10px;border-radius:6px;margin-top:10px}
+  </style>
+</head>
+<body>
+  <h1>Stored Replays</h1>
+  <p>This page lists HTML replay files currently stored in the <code>replays/</code> folder of the repository and provides links (Pages + raw).</p>
+
+  <div class="row">
+    <label for="owner">Owner</label>
+    <input id="owner" type="text" value="Spreek" />
+    <label for="repo">Repo</label>
+    <input id="repo" type="text" value="replay_analysis" />
+    <label for="folder">Folder</label>
+    <input id="folder" type="text" value="replays" />
+    <button id="refresh">Refresh</button>
+  </div>
+
+  <div class="row">
+    <label for="token">PAT (optional)</label>
+    <input id="token" type="password" placeholder="ghp_xxx or fine-grained token (optional)" />
+    <small>Only required for private repos or higher rate limits.</small>
+  </div>
+
+  <div id="status" class="notice">Loading...</div>
+  <div id="list" class="list" style="margin-top:12px"></div>
+
+<script>
+const ownerEl = document.getElementById('owner');
+const repoEl = document.getElementById('repo');
+const folderEl = document.getElementById('folder');
+const tokenEl = document.getElementById('token');
+const refreshBtn = document.getElementById('refresh');
+const statusEl = document.getElementById('status');
+const listEl = document.getElementById('list');
+
+refreshBtn.addEventListener('click', listReplays);
+
+async function listReplays(){
+  const owner = ownerEl.value.trim();
+  const repo = repoEl.value.trim();
+  const folder = folderEl.value.trim() || 'replays';
+  const token = tokenEl.value.trim();
+  statusEl.textContent = 'Loading...';
+  listEl.innerHTML = '';
+  if (!owner || !repo) { statusEl.textContent = 'Set owner and repo'; return; }
+
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(folder)}`;
+  const headers = token ? { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json' } : { Accept: 'application/vnd.github.v3+json' };
+
+  try {
+    const res = await fetch(api, { headers });
+    if (res.status === 404) {
+      statusEl.textContent = `Folder not found: ${folder} (is it created yet?)`;
+      return;
+    }
+    if (!res.ok) {
+      const txt = await res.text();
+      statusEl.textContent = `Error listing folder: ${res.status} ${txt}`;
+      return;
+    }
+    const data = await res.json();
+    const files = data.filter(i => i.type === 'file').sort((a,b)=> b.name.localeCompare(a.name));
+    if (files.length === 0) {
+      statusEl.textContent = 'No replay files found.';
+      return;
+    }
+    statusEl.textContent = `Found ${files.length} file(s)`;
+
+    // pages base: owner.github.io/repo
+    const pagesBase = `https://${owner}.github.io/${repo}`;
+    files.forEach(item => {
+      const fileUrl = `${pagesBase}/${folder}/${encodeURIComponent(item.name)}`;
+      const rawUrl = item.download_url || `https://raw.githubusercontent.com/${owner}/${repo}/main/${folder}/${item.name}`;
+      const a = document.createElement('a');
+      a.href = fileUrl;
+      a.target = '_blank';
+      a.textContent = item.name;
+      const meta = document.createElement('div');
+      meta.style.marginLeft = '8px';
+      meta.innerHTML = `<small>${item.size} bytes — <a href="${rawUrl}" target="_blank">raw</a> — commit: ${item.sha.slice(0,7)}</small>`;
+      const wrapper = document.createElement('div');
+      wrapper.appendChild(a);
+      wrapper.appendChild(meta);
+      listEl.appendChild(wrapper);
+    });
+  } catch (err) {
+    statusEl.textContent = 'Network error: ' + err;
+  }
+}
+
+// Try to auto-load on open
+listReplays();
+</script>
+</body>
+</html>
